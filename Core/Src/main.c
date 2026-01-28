@@ -27,6 +27,7 @@
 #include "usbd_cdc_if.h"
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 /* USER CODE END Includes */
 
@@ -53,10 +54,15 @@ int16_t Accel_X_Raw, Accel_Y_Raw, Accel_Z_Raw;
 int16_t Gyro_X_Raw, Gyro_Y_Raw, Gyro_Z_Raw;
 float Ax, Ay, Az, Gx, Gy, Gz;
 char usb_msg[128];
-
+float Pitch = 0.0f;
+float Roll = 0.0f;
+float Yaw = 0.0f;
 //chon chan CS
 #define CS_PORT GPIOA
 #define CS_PIN GPIO_PIN_4
+#define DT 0.02f
+#define ALPHA 0.98f
+#define RAD_TO_DEG 57.2957795f
 
 /* USER CODE END PV */
 
@@ -110,7 +116,15 @@ void SPI_Read_Burst(uint8_t RegAddr, uint8_t *pData, uint16_t Size){
 	HAL_SPI_Receive(&hspi1, pData, Size, 100);
 	HAL_GPIO_WritePin(CS_PORT, CS_PIN, GPIO_PIN_SET);
 }
+void MPU_Complementary_Filter(void){
+	float Accel_Pitch = atan2(-Ax, sqrt(Ay*Ay + Az*Az)) * RAD_TO_DEG;
+	float Accel_Roll  = atan2(-Ay, Az) * RAD_TO_DEG;
 
+	Pitch = ALPHA * (Pitch + Gy * DT) + (1.0f - ALPHA) * Accel_Pitch;
+	Roll  = ALPHA * (Roll  - Gx * DT) + (1.0f - ALPHA) * Accel_Roll;
+
+	Yaw = Yaw + Gz * DT;
+}
 /* USER CODE END 0 */
 
 /**
@@ -212,8 +226,10 @@ int main(void)
 	Gy = Gyro_Y_Raw / 65.5;
 	Gz = Gyro_Z_Raw / 65.5;
 
+	MPU_Complementary_Filter();
+
 	// Gửi lên máy tính
-	sprintf(usb_msg, "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n", Ax, Ay, Az, Gx, Gy, Gz);
+	sprintf(usb_msg, "%.2f,%.2f,%.2f\r\n", Pitch, Roll, Yaw);
 
 	CDC_Transmit_FS((uint8_t*)usb_msg, strlen(usb_msg));
 
